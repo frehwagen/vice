@@ -3480,8 +3480,9 @@ static int internal_write_geos_file(int unit, FILE* f)
     uint8_t geosFileStruc;
     int c = 0;
     unsigned int n;
-    int bContinue;
+    int bContinue = -1;
     int numBlks, bytesInLastBlock;
+    int blockLen;
 
     /* First block of cvt file is the directory entry, rest padded with zeros */
 
@@ -3526,9 +3527,16 @@ static int internal_write_geos_file(int unit, FILE* f)
     /* now read the first data block. if its a vlir-file its the vlir index
      * block
      * else its already a data block */
+    bContinue = 0xFF;
     for (n = 2; n < 256; n++) {
         c = fgetc(f);
-        vlirBlock[n] = (unsigned char)c;
+        if (c == EOF) {
+            bContinue = 0;
+	    blockLen = n - 1;
+	    vlirBlock[n] = (unsigned char)0;
+        } else {
+            vlirBlock[n] = (unsigned char)c;
+        }
     }
 
     /* the vlir index block always has a NTS-chain of (0, FF) */
@@ -3543,6 +3551,11 @@ static int internal_write_geos_file(int unit, FILE* f)
     if (vdrive_bam_alloc_next_free_sector(drives[unit], &vlirTrk, &vlirSec) < 0) {
         fprintf(stderr, "disk full\n");
         return FD_WRTERR;
+    }
+
+    if(!bContinue) {
+        vlirBlock[0] = 0;
+	vlirBlock[1] = blockLen;
     }
 
     if (vdrive_write_sector(drives[unit], vlirBlock, vlirTrk, vlirSec) != 0) {
@@ -3564,7 +3577,7 @@ static int internal_write_geos_file(int unit, FILE* f)
         lastSec = vlirSec;
         aktTrk = vlirTrk;
         aktSec = vlirSec;
-        bContinue = (vlirBlock[0] != 0);
+        /*bContinue = (vlirBlock[0] != 0);*/
         while (bContinue) {
             block[0] = 0;
             block[1] = 255;
